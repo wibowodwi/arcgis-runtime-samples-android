@@ -16,6 +16,7 @@
 
 package com.esri.arcgisruntime.sample.sketcheditor;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
@@ -23,13 +24,18 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
 
+import android.widget.Toast;
 import com.esri.arcgisruntime.geometry.Geometry;
 import com.esri.arcgisruntime.geometry.GeometryType;
+import com.esri.arcgisruntime.geometry.Point;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.Basemap;
+import com.esri.arcgisruntime.mapping.view.DefaultMapViewOnTouchListener;
 import com.esri.arcgisruntime.mapping.view.Graphic;
 import com.esri.arcgisruntime.mapping.view.GraphicsOverlay;
 import com.esri.arcgisruntime.mapping.view.MapView;
@@ -56,6 +62,11 @@ public class MainActivity extends AppCompatActivity {
   private ImageButton mPolygonButton;
   private ImageButton mFreehandLineButton;
   private ImageButton mFreehandPolygonButton;
+
+  private DefaultMapViewOnTouchListener mSketchEventListenerRestore;
+  private AddVertexMagnifierListener mAddVertexMagnifierListener;
+
+  private boolean useMagnifier = true;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -96,6 +107,12 @@ public class MainActivity extends AppCompatActivity {
     mPolygonButton.setOnClickListener(view -> createModePolygon());
     mFreehandLineButton.setOnClickListener(view -> createModeFreehandLine());
     mFreehandPolygonButton.setOnClickListener(view -> createModeFreehandPolygon());
+
+    Button toggleMagnifier = new Button(this);
+    toggleMagnifier.setOnClickListener(event -> toggleMagnifier());
+    toggleMagnifier.setText("Toggle Magnifier");
+    mMapView.addView(toggleMagnifier);
+
   }
 
   /**
@@ -106,6 +123,7 @@ public class MainActivity extends AppCompatActivity {
     resetButtons();
     mPointButton.setSelected(true);
     mSketchEditor.start(SketchCreationMode.POINT);
+    saveCurrentSketchEditorTouchListener();
   }
 
   /**
@@ -116,6 +134,8 @@ public class MainActivity extends AppCompatActivity {
     resetButtons();
     mMultiPointButton.setSelected(true);
     mSketchEditor.start(SketchCreationMode.MULTIPOINT);
+    saveCurrentSketchEditorTouchListener();
+
   }
 
   /**
@@ -126,6 +146,7 @@ public class MainActivity extends AppCompatActivity {
     resetButtons();
     mPolylineButton.setSelected(true);
     mSketchEditor.start(SketchCreationMode.POLYLINE);
+    saveCurrentSketchEditorTouchListener();
 
   }
 
@@ -137,6 +158,7 @@ public class MainActivity extends AppCompatActivity {
     resetButtons();
     mPolygonButton.setSelected(true);
     mSketchEditor.start(SketchCreationMode.POLYGON);
+    saveCurrentSketchEditorTouchListener();
   }
 
   /**
@@ -212,6 +234,8 @@ public class MainActivity extends AppCompatActivity {
       // add the graphic to the graphics overlay
       mGraphicsOverlay.getGraphics().add(graphic);
     }
+
+    mSketchEventListenerRestore = null;
   }
 
   /**
@@ -289,5 +313,59 @@ public class MainActivity extends AppCompatActivity {
   protected void onDestroy() {
     super.onDestroy();
     mMapView.dispose();
+  }
+
+  private void saveCurrentSketchEditorTouchListener() {
+    if (mSketchEventListenerRestore == null) {
+      mSketchEventListenerRestore = (DefaultMapViewOnTouchListener) mMapView.getOnTouchListener();
+    }
+  }
+
+  /**
+   * Toggles showing the magnifier
+   */
+  private void toggleMagnifier() {
+    mMapView.setMagnifierEnabled(!mMapView.isMagnifierEnabled());
+
+    if (mMapView.isMagnifierEnabled()) {
+      if (mAddVertexMagnifierListener == null) {
+        mAddVertexMagnifierListener = new AddVertexMagnifierListener(this, mMapView);
+      }
+      mMapView.setOnTouchListener(mAddVertexMagnifierListener);
+    } else {
+      if (mSketchEventListenerRestore != null) {
+        mMapView.setOnTouchListener(mSketchEventListenerRestore);
+      }
+    }
+
+    Toast.makeText(this, "Magnifier="+mMapView.isMagnifierEnabled(), Toast.LENGTH_LONG).show();
+  }
+
+  /**
+   *
+   */
+  class AddVertexMagnifierListener extends DefaultMapViewOnTouchListener {
+
+    /**
+     * Constructs a DefaultMapViewOnTouchListener with the given Context and MapView.
+     *
+     * @param context the context from which this is being created
+     * @param mapView the MapView with which to interact
+     * @since 100.0.0
+     */
+    public AddVertexMagnifierListener(Context context, MapView mapView) {
+      super(context, mapView);
+    }
+
+    @Override public boolean onUp(MotionEvent e) {
+      boolean ret = super.onUp(e);
+      //Check any other condition to add a vertex when the magnifier is up.
+      boolean isStarted = mMapView.isMagnifierEnabled(); //&& SketchEditor is started
+      if (isStarted) {
+        Point point = mMapView.screenToLocation(new android.graphics.Point((int)e.getX(), (int)e.getY()));
+        mSketchEditor.insertVertexAfterSelectedVertex(point);
+      }
+      return ret;
+    }
   }
 }
